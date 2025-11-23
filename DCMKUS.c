@@ -81,7 +81,7 @@ typedef union
 uint8_t svetlo,res,brzda ;          
 _Bool VPRED, VZAD, VLEVO, VPRAVO, BRZDA, OSA, VPREDPRE, VZADPRE, VLEVOPRE, VPRAVOPRE, BRZDAPRE, OSAPRE;
 _Bool FRELINK=0, COMOK= 0, PRIJATBYTE=0, BRZDENI;
-_Bool PAUSE;// priznak pauza
+// _Bool PAUSE;// priznak pauza
 _Bool LBLIK, QBLIK;
 const uint8_t COP=0x41, ALT= 0xa5;
 uint8_t in[8], set, res, film, ax , rychlost, rejd;//prom. fitru
@@ -90,7 +90,7 @@ uint8_t plyn,blik;//prepoctena hod. akc.do  pwm,  odmer. blik.LED, stav brzd. pe
 uint16_t kniply,kniplx;//, naratim;;
 word  kniplyfil, kniplxfil, jizda, zatoc;
 uint32_t timvyp;
-uint8_t *ptr, prijaty, kom, vadnych;
+uint8_t *ptr, prijaty, vadnych=0;
 word axpc;
 
 inline _Bool  nastav(uint8_t *vstup, _Bool b)//funkce vraci 1 jen prave v momentu sepnuti tlacitka -  2stavy sepnuto za sebou  nasleduji po 2 vzorcich stavu vypnuto]
@@ -269,6 +269,11 @@ int main(int argc, char** argv)
        
        while(RCIF)
        {
+           if(OERR)
+           {
+                CREN = 0;
+                CREN = 1;
+           }
            PRIJATBYTE=1;
            ax= RCREG;
            TMR1=-2000; //1ms
@@ -297,12 +302,12 @@ int main(int argc, char** argv)
          
        }
        
-       if(TMR1IF)
+       if(TMR1IF)   //uplynula nastavena prodleva bez prijmu dat
        {
            TMR1IF=0;
-           TMR1ON= 0;
+     //      TMR1ON= 0;
            FRELINK= 1;  //volna linka
-           if(i==BUFMAX)//prijato 5B
+           if(i==BUFMAX)//prijato 5Byt?
            {
                bufout= ALT;
                COMOK=  1;
@@ -316,6 +321,30 @@ int main(int argc, char** argv)
            }
            i=0;
        }
+       if(FRELINK && (DE==0))   //volna linka a dosud se nevysila, pak se vysle byte
+       {
+           FRELINK=0;
+           TMR1= -40000;//20ms
+          // TMR1ON=1;
+          // kom=100;
+           DE=1;
+           TXIF=1;
+           //bufout= ALT;
+           i=0;
+           PRIJATBYTE=0;
+           TXREG= bufout;
+           if(COMOK)        //pokud je prijem v poradku, 
+               vystupy();   //nastavi se vystupy(jen LED se nastavi zvlast)
+       }
+       if(vadnych > 10)
+       {
+           while(1)
+           {
+               //SW reset by watchdog
+           }
+                   
+       }
+       
 //       if()
        /*
        if(kom > 0)
@@ -330,7 +359,7 @@ int main(int argc, char** argv)
            FRELINK= 1;      //komunikace skoncila, volna linka
        }
        */
-       if(T0IF)
+       if(T0IF) //blikani LED
        {
         T0IF=0;
         if(COMOK)
@@ -347,21 +376,6 @@ int main(int argc, char** argv)
             }
             i=0;
             DE=0;     
-       }
-       if(FRELINK && (DE==0))
-       {
-           FRELINK=0;
-           TMR1= -40000;//20ms
-           TMR1ON=1;
-          // kom=100;
-           DE=1;
-           TXIF=1;
-           //bufout= ALT;
-           i=0;
-           PRIJATBYTE=0;
-           TXREG= bufout;
-           if(COMOK)
-               vystupy();
        }
        
  //  }

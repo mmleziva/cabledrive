@@ -78,7 +78,7 @@ ADCON0 = (channel << 3) + 0x81;		// !T enable ADC,  osc.32*Tosc
 
 void adc_filter(uint16_t *act,uint16_t *filt)//filtr hodnot, merenych Adc
 {
-    int16_t ax= (int16_t)((*act)>>4) - (int16_t)((*filt)>>4);
+    int16_t ax= (int16_t)((*act)>>2) - (int16_t)((*filt)>>2);
     *filt += (uint16_t)ax; 
 }
 
@@ -136,10 +136,12 @@ int main(int argc, char** argv)
        in[k]= ~PORTB;    //inverted inputs
        set=0xff;
        res=0;
+       /*
        if(prijaty==ALT)
        {
         fh.B=0;
        }
+        */ 
        prijaty=0;
        for (j=0; j<8; j++)
        {
@@ -159,12 +161,23 @@ int main(int argc, char** argv)
        if(kom > 0)
        {
            kom--;
+           if(prijaty==ALT)
+           LEDC= QBLIK;
+           else
+           if(prijaty==(~ALT))
            LEDC= LBLIK;
        }
        else
            LEDC= 0;
-       if(RCIF && !DE)
+       
+     }
+     if(RCIF && !DE)
        {
+          if(OERR)
+          {
+                CREN = 0;
+                CREN = 1;
+          }
          prijaty= RCREG;  
        }
        if((prijaty==ALT) || (prijaty==(~ALT)))
@@ -172,7 +185,8 @@ int main(int argc, char** argv)
            kom=100;
            DE=1;
            TXIF=1;
-           bufout[0]=(fil.B & COP) | (fh.B & ~(COP));
+           //bufout[0]=(fil.B & COP) | (fh.B & ~(COP));
+           bufout[0]= fil.B;
            bufout[1]= kniplxfil.H;
            bufout[2]= kniplxfil.L;
            bufout[3]= kniplyfil.H;
@@ -194,7 +208,7 @@ int main(int argc, char** argv)
                i++;               
             }                  
        }
-   }
+
   }  
   return (EXIT_SUCCESS);
 }
