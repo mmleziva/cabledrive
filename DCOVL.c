@@ -98,7 +98,7 @@ int main(int argc, char** argv)
    TRISB=0xe1;
    PORTA= 0b00000011;
    OPTION_REGbits.nRBPU=0;// pull up
-
+   OPTION_REGbits.PSA=0;// timer0 prescaller
    TRISA= 0b00000011;
    ADCON1bits.ADFM= 0;//left just. ADC
    ADCON1bits.PCFG= 4;//AN0,1,3
@@ -172,16 +172,16 @@ int main(int argc, char** argv)
        
      }
      if(RCIF && !DE)
-       {
+     {
           if(OERR)
           {
                 CREN = 0;
                 CREN = 1;
           }
          prijaty= RCREG;  
-       }
-       if((prijaty==ALT) || (prijaty==(~ALT)))
-       {
+     }
+     if((prijaty==ALT) || (prijaty==(~ALT)))
+     {
            kom=100;
            DE=1;
            TXIF=1;
@@ -194,9 +194,9 @@ int main(int argc, char** argv)
            i=0;
            TXREG= bufout[i];
            i++;
-       }
-       if(DE)
-       {
+     }
+     if(DE)
+     {
             if(TRMT && (i >= BUFMAX))
             {
                i=0; 
@@ -207,7 +207,7 @@ int main(int argc, char** argv)
                TXREG= bufout[i];
                i++;               
             }                  
-       }
+     }
 
   }  
   return (EXIT_SUCCESS);

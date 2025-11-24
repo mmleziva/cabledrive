@@ -29,9 +29,9 @@
 
 #define BUFMAX      5
 #define PWMAX      0x40
-
+#define ERRMAX      10
 #define MIN    0x200
-#define SILNA  (0x100*0.85)
+#define SILNA ((0x100 * 85) / 100)
 
 
         //16bit. slovo w=[H,L]
@@ -77,7 +77,7 @@ typedef union
         unsigned b7 : 1;
     };
 }Bbits;
-//Bbits posun;
+Bbits timled;
 uint8_t svetlo,res,brzda ;          
 _Bool VPRED, VZAD, VLEVO, VPRAVO, BRZDA, OSA, VPREDPRE, VZADPRE, VLEVOPRE, VPRAVOPRE, BRZDAPRE, OSAPRE;
 _Bool FRELINK=0, COMOK= 0, PRIJATBYTE=0, BRZDENI;
@@ -235,6 +235,7 @@ int main(int argc, char** argv)
    TRISBbits.TRISB6=1;
    PORTA= 0b00000000;
    OPTION_REGbits.nRBPU=0;// pull up
+   OPTION_REGbits.PSA=0;// timer0 prescaller
    TRISA= 0b11100000;
    
  
@@ -255,17 +256,7 @@ int main(int argc, char** argv)
    //infinited cycle
    while(1)
    {    
-     CLRWDT();  //clear watchdog timer
- //    if(TMR1IF)//1ms cyklus
- //    {
- //      TMR1=-2000;
- //        TMR1IF =0;
-                   //digital filters Td=8*2=16ms
-       
-       LBLIK= ((blik & 0x80) != 0);//priznak blikani
-       QBLIK= ((blik & 0x20) != 0);//priznak blikani 4x rychleji
-       blik++;
-       
+     CLRWDT();  //clear watchdog timer      
        
        while(RCIF)
        {
@@ -298,8 +289,7 @@ int main(int argc, char** argv)
                    default:
                        break;                    
          }
-         i++;
-         
+         i++;    
        }
        
        if(TMR1IF)   //uplynula nastavena prodleva bez prijmu dat
@@ -317,56 +307,26 @@ int main(int argc, char** argv)
            {
                bufout= ~ALT;
                COMOK=0;
-               vadnych++;
+               if(vadnych <= ERRMAX)
+                   vadnych++;
            }
            i=0;
        }
        if(FRELINK && (DE==0))   //volna linka a dosud se nevysila, pak se vysle byte
        {
            FRELINK=0;
-           TMR1= -40000;//20ms
+           TMR1= -20000;//10ms
           // TMR1ON=1;
           // kom=100;
            DE=1;
-           TXIF=1;
            //bufout= ALT;
            i=0;
            PRIJATBYTE=0;
            TXREG= bufout;
            if(COMOK)        //pokud je prijem v poradku, 
                vystupy();   //nastavi se vystupy(jen LED se nastavi zvlast)
+           TXIF=0;
        }
-       if(vadnych > 10)
-       {
-           while(1)
-           {
-               //SW reset by watchdog
-           }
-                   
-       }
-       
-//       if()
-       /*
-       if(kom > 0)
-       {
-           kom--;
-           LEDC= LBLIK;
-       }
-       else
-       {
-           LEDC= 0;
-           bufout= (~ALT);
-           FRELINK= 1;      //komunikace skoncila, volna linka
-       }
-       */
-       if(T0IF) //blikani LED
-       {
-        T0IF=0;
-        if(COMOK)
-            LEDC=!LEDC;
-        else
-            LEDC=0;
-       }    
        if(DE)
        {
             if(TXIF)
@@ -377,6 +337,28 @@ int main(int argc, char** argv)
             i=0;
             DE=0;     
        }
+       if(vadnych > ERRMAX)
+       {
+           while(1)
+           {
+               //SW reset by watchdog
+           }                  
+       }
+ 
+       if(T0IF) //blikani LED
+       {
+        T0IF=0;
+        timled.B ++;
+        if(timled.b0 &&  timled.b1)
+            LEDC=0;
+        else if(COMOK)
+            if((timled.B & 0x7)==0)
+                LEDC=1;        
+        else
+            if(timled.B==0)//
+                LEDC=1; //bez komunikace blikne 1xza 8s 
+       }    
+       
        
  //  }
   }  
