@@ -53,8 +53,8 @@ typedef union
     }  ;
 }word;
 
-_Bool  LBLIK, QBLIK;
-const uint8_t COP=0x41, ALT= 0xa5;
+_Bool  LBLIK, QBLIK, SBLIK;
+const uint8_t COP=0x41, ALT= 0xa5, ALTINV = (uint8_t)(~ALT);
 uint8_t in[8], set, res, film ;//prom. fitru
 uint8_t step,stepold,i,  k, j , startime,bufout[BUFMAX];//krok programu, predch. krok,.., citac prodlevy 50 ms 
 uint8_t blik;// odmer. blik.LED,
@@ -95,10 +95,10 @@ int main(int argc, char** argv)
         //config
    TRISC=0x80;     //outs enable
    PORTC=0x0; 
-   TRISB=0xe1;
+   TRISB=0b00111110;
    PORTA= 0b00000011;
    OPTION_REGbits.nRBPU=0;// pull up
-
+   OPTION_REGbits.PSA=0;// timer0 prescaller
    TRISA= 0b00000011;
    ADCON1bits.ADFM= 0;//left just. ADC
    ADCON1bits.PCFG= 4;//AN0,1,3
@@ -116,11 +116,12 @@ int main(int argc, char** argv)
    kniplyfil.w= adc_read(JY);
  
    T2CONbits.TMR2ON= 1;//start T2   
-   TMR1=-2000;
+   TMR1= (uint16_t)(-20000);
    TMR1ON=1;
+   BRGH=1;
    SPBRG=25;		/*19200baud*/ 
    SPEN=1;		/*povoli seriovku*/
-   //TXEN=1;
+   TXEN=1;      /*povoli vysilani*/
    CREN=1;		/*povoli prijem*/ 
    //infinited cycle
    while(1)
@@ -128,7 +129,7 @@ int main(int argc, char** argv)
      CLRWDT();  //clear watchdog timer
      if(TMR1IF)//1ms cyklus
      {
-         TMR1=-2000;
+         TMR1=(uint16_t)(-2000);
          TMR1IF =0;
                    //digital filters Td=8*2=16ms
        k++;
@@ -142,7 +143,7 @@ int main(int argc, char** argv)
         fh.B=0;
        }
         */ 
-       prijaty=0;
+    //   prijaty=0;
        for (j=0; j<8; j++)
        {
            set &= in[j];   //all 8 last 5ms samples must be 1 for set to 1  
@@ -157,6 +158,7 @@ int main(int argc, char** argv)
        adc_filter( &kniply,&kniplyfil.w);
        LBLIK= ((blik & 0x80) != 0);//priznak blikani
        QBLIK= ((blik & 0x20) != 0);//priznak blikani 4x rychleji
+       SBLIK= ((blik & 0xf0) == 0);//priznak blikani 4x rychleji
        blik++; 
        if(kom > 0)
        {
@@ -164,51 +166,56 @@ int main(int argc, char** argv)
            if(prijaty==ALT)
            LEDC= QBLIK;
            else
-           if(prijaty==(~ALT))
+           if(prijaty==ALTINV)
            LEDC= LBLIK;
        }
        else
-           LEDC= 0;
+       {
+         //  LEDC= 0;
+           LEDC= SBLIK;
+           prijaty=0;
+       }
        
      }
      if(RCIF && !DE)
-       {
+     {
           if(OERR)
           {
                 CREN = 0;
                 CREN = 1;
           }
-         prijaty= RCREG;  
-       }
-       if((prijaty==ALT) || (prijaty==(~ALT)))
-       {
-           kom=100;
-           DE=1;
-           TXIF=1;
-           //bufout[0]=(fil.B & COP) | (fh.B & ~(COP));
-           bufout[0]= fil.B;
-           bufout[1]= kniplxfil.H;
-           bufout[2]= kniplxfil.L;
-           bufout[3]= kniplyfil.H;
-           bufout[4]= kniplyfil.L;
-           i=0;
-           TXREG= bufout[i];
-           i++;
-       }
-       if(DE)
-       {
+          prijaty= RCREG;  
+     
+          if((prijaty==ALT) || (prijaty==ALTINV))
+          {
+                kom=100;
+                DE=1;
+                TXIF=1;
+                //bufout[0]=(fil.B & COP) | (fh.B & ~(COP));
+                bufout[0]= fil.B;
+                bufout[1]= kniplxfil.H;
+                bufout[2]= kniplxfil.L;
+                bufout[3]= kniplyfil.H;
+                bufout[4]= kniplyfil.L;
+                i=0;
+                TXREG= bufout[i];
+                i++;
+          }
+     }
+     if(DE)
+     {
+            while(TXIF && (i<BUFMAX))
+            {                   
+               TXREG= bufout[i];
+               i++;               
+            }                  
             if(TRMT && (i >= BUFMAX))
             {
                i=0; 
                DE=0;
             }     
-            while(!TXIF && (i<BUFMAX))
-            {                   
-               TXREG= bufout[i];
-               i++;               
-            }                  
-       }
-
+            
+     }
   }  
   return (EXIT_SUCCESS);
 }

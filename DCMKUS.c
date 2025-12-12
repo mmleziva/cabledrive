@@ -14,10 +14,10 @@
  // outputs
 #define LEDC        RA0
 
-#define NAHOR       RB0
-#define DOLU        RB1
-#define SVETLO      RB2
-#define RES         RB3
+#define NAHORU      RB0
+#define DOLUP       RB1
+#define SVETLOP     RB2
+#define RESP        RB3
 #define BRZDA_R     RB4
 #define BRZDA_L     RB5
 
@@ -29,9 +29,9 @@
 
 #define BUFMAX      5
 #define PWMAX      0x40
-
+#define ERRMAX      10
 #define MIN    0x200
-#define SILNA  (0x100*0.85)
+#define SILNA ((0x100 * 85) / 100)
 
 
         //16bit. slovo w=[H,L]
@@ -77,13 +77,13 @@ typedef union
         unsigned b7 : 1;
     };
 }Bbits;
-//Bbits posun;
+Bbits timled;
 uint8_t svetlo,res,brzda ;          
 _Bool VPRED, VZAD, VLEVO, VPRAVO, BRZDA, OSA, VPREDPRE, VZADPRE, VLEVOPRE, VPRAVOPRE, BRZDAPRE, OSAPRE;
 _Bool FRELINK=0, COMOK= 0, PRIJATBYTE=0, BRZDENI;
 // _Bool PAUSE;// priznak pauza
 _Bool LBLIK, QBLIK;
-const uint8_t COP=0x41, ALT= 0xa5;
+const uint8_t COP=0x41, ALT= 0xa5, ALTINV = (uint8_t)(~ALT);
 uint8_t in[8], set, res, film, ax , rychlost, rejd;//prom. fitru
 uint8_t i,k,j, prodleva,startime,bufout, bufin[BUFMAX];//krok programu, predch. krok,.., citac prodlevy 50 ms 
 uint8_t plyn,blik;//prepoctena hod. akc.do  pwm,  odmer. blik.LED, stav brzd. pedalu, citac po brzdeni
@@ -127,18 +127,18 @@ inline void countPWM(uint8_t strida) //prednastavi PWM
 inline void vystupy(void)   //ridi vystupy
 {
        if(statepre.DOLU == state.DOLU) 
-        DOLU= state.DOLU;
+        DOLUP= state.DOLU;
        if(statepre.NAHOR == state.NAHOR) 
-        NAHOR= state.NAHOR;
+        NAHORU= state.NAHOR;
        statepre= state;
        if(nastav(&svetlo, state.SVETLO ))
-          SVETLO= !SVETLO;
+          SVETLOP= !SVETLOP;
        if(nastav(&brzda, state.BRZDA ))
        {
           BRZDENI= !BRZDENI;
        }
        if(nastav(&res, state.RES ))
-          RES= !RES;
+          RESP= !RESP;
        jizda.sigw = (int16_t)(kniplxfil.w - 0x8000);//poloha kniplu jako int16_t, + =vpred, -=vzad
        if(jizda.sigw > MIN)
        {
@@ -232,12 +232,12 @@ int main(int argc, char** argv)
         //config
    PORTC=0x0; 
    TRISC=0x80;     //outs enable
-   TRISBbits.TRISB6=1;
+   //TRISBbits.TRISB6=1;
+   TRISB= 0;
    PORTA= 0b00000000;
    OPTION_REGbits.nRBPU=0;// pull up
-   TRISA= 0b11100000;
-   
- 
+   OPTION_REGbits.PSA=0;// timer0 prescaller
+   TRISA= 0b11100000;  
    CCPR2L=0;
    CCPR1L=0;
    CCP2CONbits.CCP2M= 0xf;//PWM RC1 VPRED
@@ -246,26 +246,20 @@ int main(int argc, char** argv)
    PR2=PWMAX-1;   //250*4=1000us TMR2 period
    T2CONbits.TOUTPS=1;//postscalller=2, T2IF 1ms
    T2CONbits.TMR2ON= 1;//start T2   
-   TMR1=-40000;     //20ms
-   TMR1ON=1;
+   TMR1=(uint16_t)(-40000);     //20ms
+   TMR1ON=1;        //start T1
+   T0CS=0;        //start T0
+   PSA=0;           //prescaller
+   BRGH=1;
    SPBRG=25;		/*19200baud*/ 
    SPEN=1;		/*povoli seriovku*/
-   //TXEN=1;
+   TXEN=1;		/*povoli vysilani*/
+
    CREN=1;		/*povoli prijem*/ 
    //infinited cycle
    while(1)
    {    
-     CLRWDT();  //clear watchdog timer
- //    if(TMR1IF)//1ms cyklus
- //    {
- //      TMR1=-2000;
- //        TMR1IF =0;
-                   //digital filters Td=8*2=16ms
-       
-       LBLIK= ((blik & 0x80) != 0);//priznak blikani
-       QBLIK= ((blik & 0x20) != 0);//priznak blikani 4x rychleji
-       blik++;
-       
+     CLRWDT();  //clear watchdog timer      
        
        while(RCIF)
        {
@@ -276,10 +270,9 @@ int main(int argc, char** argv)
            }
            PRIJATBYTE=1;
            ax= RCREG;
-           TMR1=-2000; //1ms
-       
-         switch(i)
-         {
+           TMR1=(uint16_t)(-2000); //1ms       
+           switch(i)
+           {
                    case 0:
                        state.B= ax;
                    break;
@@ -297,9 +290,8 @@ int main(int argc, char** argv)
                    break;
                    default:
                        break;                    
-         }
-         i++;
-         
+           }
+           i++;    
        }
        
        if(TMR1IF)   //uplynula nastavena prodleva bez prijmu dat
@@ -315,68 +307,73 @@ int main(int argc, char** argv)
            }
            else
            {
-               bufout= ~ALT;
+               bufout= ALTINV;
                COMOK=0;
-               vadnych++;
+               if(vadnych <= ERRMAX)
+                   vadnych++;
            }
            i=0;
        }
-       if(FRELINK && (DE==0))   //volna linka a dosud se nevysila, pak se vysle byte
+       if(DE)
+       {
+            if(TXIF)
+            {      
+                while(!TRMT)
+                {
+                    if(TMR1IF)
+                    {
+                        TMR1IF=0;
+                        break;
+                    }
+                }                            
+                i=0;
+                DE=0;
+             }
+       }
+       //if(FRELINK && (DE==0))   //volna linka a dosud se nevysila, pak se vysle byte
+       else if(FRELINK)   //volna linka a dosud se nevysila, pak se vysle byte
        {
            FRELINK=0;
-           TMR1= -40000;//20ms
+           TMR1= (uint16_t)(-20000);//10ms
           // TMR1ON=1;
           // kom=100;
            DE=1;
-           TXIF=1;
            //bufout= ALT;
            i=0;
            PRIJATBYTE=0;
            TXREG= bufout;
            if(COMOK)        //pokud je prijem v poradku, 
                vystupy();   //nastavi se vystupy(jen LED se nastavi zvlast)
-       }
-       if(vadnych > 10)
+           TXIF=0;        //!t
+       }       
+       if(vadnych > ERRMAX)
        {
+           vadnych=0;
+           /*
            while(1)
            {
                //SW reset by watchdog
-           }
-                   
+           } 
+            */                  
        }
-       
-//       if()
-       /*
-       if(kom > 0)
-       {
-           kom--;
-           LEDC= LBLIK;
-       }
-       else
-       {
-           LEDC= 0;
-           bufout= (~ALT);
-           FRELINK= 1;      //komunikace skoncila, volna linka
-       }
-       */
+ 
        if(T0IF) //blikani LED
        {
         T0IF=0;
-        if(COMOK)
-            LEDC=!LEDC;
-        else
+        timled.B ++;
+        if(timled.b0 &&  timled.b1)
             LEDC=0;
+        else
+        if(COMOK)
+        {
+            if((timled.B & 0x7)==0)
+                LEDC=1;
+        }
+        else
+        if(timled.B==0)//
+             LEDC=1; //bez komunikace blikne 1xza 8s 
        }    
-       if(DE)
-       {
-            if(TXIF)
-            {      
-                while(!TRMT){}
-                 
-            }
-            i=0;
-            DE=0;     
-       }
+       
        
  //  }
   }  
