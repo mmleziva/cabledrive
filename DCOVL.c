@@ -57,7 +57,8 @@ _Bool  LBLIK, QBLIK, SBLIK;
 const uint8_t COP=0x41, ALT= 0xa5, ALTINV = (uint8_t)(~ALT);
 uint8_t in[8], set, res, film ;//prom. fitru
 uint8_t step,stepold,i,  k, j , startime,bufout[BUFMAX];//krok programu, predch. krok,.., citac prodlevy 50 ms 
-uint8_t blik;// odmer. blik.LED,
+//uint8_t blik;// odmer. blik.LED,
+uint16_t blik;// odmer. blik.LED,
 uint16_t kniply,kniplx;//, naratim;;
 word  kniplyfil, kniplxfil;
 uint32_t timvyp;
@@ -156,26 +157,70 @@ int main(int argc, char** argv)
        kniply= adc_read(JY);
        adc_filter( &kniplx,&kniplxfil.w);
        adc_filter( &kniply,&kniplyfil.w);
-       LBLIK= ((blik & 0x80) != 0);//priznak blikani
-       QBLIK= ((blik & 0x20) != 0);//priznak blikani 4x rychleji
-       SBLIK= ((blik & 0xf0) == 0);//priznak blikani 4x rychleji
-       blik++; 
+      // LBLIK= ((blik & 0x80) != 0);//priznak blikani
+      // QBLIK= ((blik & 0x20) != 0);//priznak blikani 4x rychleji
+      // SBLIK= ((blik & 0xf0) == 0);//priznak blikani 4x rychleji
+     //  blik++; 
        if(kom > 0)
        {
            kom--;
            if(prijaty==ALT)
-           LEDC= QBLIK;
+           {
+             QBLIK=1;
+             LBLIK=0;
+        //   LEDC= QBLIK;
+           }
            else
            if(prijaty==ALTINV)
-           LEDC= LBLIK;
+           {
+               QBLIK=0;
+               LBLIK=1;
+           //LEDC= LBLIK;
+           }
        }
        else
        {
          //  LEDC= 0;
-           LEDC= SBLIK;
-           prijaty=0;
+          // LEDC= SBLIK;
+            QBLIK=0;
+            LBLIK=0;
+            prijaty=0;
+       }   
+       if(LEDC)
+       {
+         if(blik > 100)
+         {   
+             LEDC=0;
+             blik=0;
+         }
        }
-       
+       else
+       if(QBLIK)
+       {
+        if(blik> 175)
+        {
+            LEDC=1;
+            blik=0;
+        } 
+       }
+       else
+       if(LBLIK)
+       {
+        if(blik> 700)
+        {
+            LEDC=1;
+            blik=0;
+        } 
+       }
+       else
+       {
+        if(blik> 7000)
+        {
+            LEDC=1;
+            blik=0;
+        } 
+       }
+       blik++;
      }
      if(RCIF && !DE)
      {

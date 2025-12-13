@@ -142,12 +142,14 @@ inline void vystupy(void)   //ridi vystupy
        jizda.sigw = (int16_t)(kniplxfil.w - 0x8000);//poloha kniplu jako int16_t, + =vpred, -=vzad
        if(jizda.sigw > MIN)
        {
+           BRZDA= 0;
            VPRED=1;
            jizda.w<<=1;
            rychlost= jizda.H;
        }
        else if(jizda.sigw < -(MIN))
        {
+           BRZDA= 0;
            VZAD=1;
            jizda.sigw= -jizda.sigw;
            jizda.w<<=1;
@@ -160,12 +162,14 @@ inline void vystupy(void)   //ridi vystupy
        zatoc.sigw = (int16_t)(kniplyfil.w - 0x8000);    //poloha kniplu zataceni + = vlevo, -= vpravo
        if(zatoc.sigw > MIN)
        {
+           OSA= 0;
            VLEVO=1;
            zatoc.w<<=1;
            rejd= zatoc.H;
        }
        else if(zatoc.sigw < -(MIN))
        {
+           OSA= 0;
            VPRAVO=1;
            zatoc.sigw= -zatoc.sigw;
            zatoc.w<<=1;
@@ -254,7 +258,6 @@ int main(int argc, char** argv)
    SPBRG=25;		/*19200baud*/ 
    SPEN=1;		/*povoli seriovku*/
    TXEN=1;		/*povoli vysilani*/
-
    CREN=1;		/*povoli prijem*/ 
    //infinited cycle
    while(1)
@@ -364,9 +367,15 @@ int main(int argc, char** argv)
         if(timled.b0 &&  timled.b1)
             LEDC=0;
         else
-        if(COMOK)
+        if(COMOK)               //spravna komunikace
         {
             if((timled.B & 0x7)==0)
+                LEDC=1;
+        }
+        else
+        if(vadnych <= ERRMAX)   // komunikace, ale spatna
+        {
+             if((timled.B & 0x1f)==0)
                 LEDC=1;
         }
         else
